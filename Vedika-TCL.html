@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Théorème Central Limite</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: linear-gradient(135deg, #dbeafe 0%, #eff6ff 50%, #e0f2fe 100%);
+    --surface: rgba(255,255,255,0.72);
+    --surface2: rgba(219,234,254,0.65);
+    --border: rgba(0,0,0,0.1);
+    --border-strong: rgba(0,0,0,0.18);
+    --text: #1a1a18;
+    --text-muted: #5f5e5a;
+    --text-hint: #888780;
+    --blue: #60A5FA;
+    --coral: #0EA5E9;
+    --green: #2a9d5c;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --font: 'Georgia', serif;
+    --font-sans: system-ui, -apple-system, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a18; --surface: #242422; --surface2: #2c2c2a;
+      --border: rgba(255,255,255,0.08); --border-strong: rgba(255,255,255,0.18);
+      --text: #f1efe8; --text-muted: #b4b2a9; --text-hint: #888780;
+    }
+  }
+
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: var(--font-sans); font-size: 15px; line-height: 1.6;
+    min-height: 100vh; padding: 2rem 1rem;
+  }
+
+  .container { max-width: 940px; margin: 0 auto; }
+
+  /* WATERMARK */
+  .watermark {
+    position: fixed; top: 14px; right: 20px;
+    font-size: 13px; font-weight: 600; color: #378ADD;
+    letter-spacing: 0.5px; pointer-events: none; z-index: 100;
+  }
+
+  /* HEADER */
+  header { margin-bottom: 1.5rem; border-bottom: 0.5px solid var(--border-strong); padding-bottom: 1rem; }
+  header h1 { font-family: var(--font); font-size: 24px; font-weight: normal; letter-spacing: -0.3px; margin-bottom: 0.2rem; }
+  header p { font-size: 13px; color: var(--text-muted); }
+
+  /* TABS */
+  .tabs { display: flex; gap: 4px; margin-bottom: 1.25rem; background: var(--surface2); border-radius: var(--radius-md); padding: 4px; width: fit-content; }
+  .tab-btn {
+    padding: 6px 16px; font-size: 13px; font-weight: 500; border: none; border-radius: 6px;
+    cursor: pointer; background: transparent; color: var(--text-muted); transition: all 0.15s;
+  }
+  .tab-btn.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+  .tab-btn:hover:not(.active) { color: var(--text); }
+
+  /* PANELS */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* CONTROLS */
+  .controls {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 12px; margin-bottom: 1.25rem;
+    background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1.1rem;
+  }
+  .control-group { display: flex; flex-direction: column; gap: 5px; }
+  .control-group label { font-size: 11px; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.4px; }
+  .val { font-weight: 600; color: var(--text); }
+
+  select {
+    width: 100%; background: var(--surface2); border: 0.5px solid var(--border-strong);
+    border-radius: var(--radius-md); color: var(--text); font-size: 13px;
+    padding: 7px 10px; outline: none; cursor: pointer; appearance: none; -webkit-appearance: none;
+  }
+  select:focus { border-color: var(--blue); }
+
+  input[type="range"] {
+    width: 100%; padding: 0; height: 4px; border-radius: 2px; border: none;
+    accent-color: var(--blue); cursor: pointer; margin-top: 6px; background: var(--surface2);
+  }
+
+  .btn-row { display: flex; gap: 8px; align-items: flex-end; }
+  .btn {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
+    border: none; border-radius: var(--radius-md); padding: 8px 12px;
+    font-size: 13px; font-weight: 500; cursor: pointer; transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.8; }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary { background: #1a1a18; color: #ffffff; }
+  .btn-play { background: var(--green); color: #fff; }
+  .btn-play.playing { background: var(--coral); }
+
+  /* STATS */
+  .stats-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 1.25rem; }
+  .stat-card { background: var(--surface); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.35); border-radius: 16px; padding: 0.85rem 1rem; text-align: center; box-shadow: 0 6px 20px rgba(96,165,250,0.12); transition: transform 0.2s ease; }
+  .stat-card .slabel { font-size: 10px; color: var(--text-hint); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
+  .stat-card .svalue { font-size: 20px; font-weight: 500; color: var(--text); font-variant-numeric: tabular-nums; }
+
+  /* CHARTS */
+  .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 1rem; }
+  @media (max-width: 620px) { .charts-grid { grid-template-columns: 1fr; } .stats-row { grid-template-columns: 1fr 1fr; } }
+  .chart-panel { background: var(--surface); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,0.35); border-radius: 18px; padding: 1rem; box-shadow: 0 8px 30px rgba(96,165,250,0.15); }
+  .chart-label { font-size: 10px; color: var(--text-hint); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .chart-wrap { position: relative; width: 100%; height: 210px; }
+
+  /* LEGEND */
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 1.5rem; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted); }
+  .leg-sq { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+  .leg-ln { width: 18px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+
+  /* ANIMATION PROGRESS */
+  .anim-bar-wrap { height: 3px; background: var(--surface2); border-radius: 2px; margin-bottom: 1.25rem; overflow: hidden; }
+  .anim-bar { height: 100%; width: 0%; background: var(--green); border-radius: 2px; transition: width 0.1s linear; }
+
+  /* ── CUSTOM DISTRIBUTION PANEL ── */
+  .draw-instructions { font-size: 10px; color: var(--text-muted); margin-bottom: 8px; }
+  .draw-row { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 1rem; min-width: 0; }
+  #drawCanvas {
+    flex: 1; min-width: 0; width: 100%; max-width: 100%; height: 160px;
+    border-radius: var(--radius-md); border: 1.5px dashed var(--border-strong);
+    cursor: crosshair; background: var(--surface2); display: block;
+  }
+  #drawCanvas.has-drawing { border-style: solid; border-color: var(--blue); }
+  .draw-actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  
+.stat-card:hover {
+  transform: translateY(-3px);
+}
+
+  /* GAUGE */
+  .gauge-wrap { margin-bottom: 1.25rem; background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 0.9rem 1.1rem; }
+  .gauge-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; font-weight: 500; }
+  .gauge-label span { font-weight: 700; color: var(--text); font-size: 13px; text-transform: none; letter-spacing: 0; }
+  .gauge-track { height: 14px; background: var(--surface2); border-radius: 7px; overflow: hidden; position: relative; }
+  .gauge-fill { height: 100%; width: 0%; border-radius: 7px; transition: width 0.5s ease, background 0.5s ease; background: #e74c3c; }
+  .gauge-hints { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-hint); margin-top: 4px; }
+
+  footer { margin-top: 2rem; text-align: center; font-size: 11px; color: var(--text-hint); padding-top: 1rem; border-top: 0.5px solid var(--border); }
+</style>
+</head>
+<body>
+<div class="watermark">Vedika</div>
+<div class="container">
+
+  <header>
+    <h1>Théorème Central Limite</h1>
+    <p>Démonstration interactive — choisissez une distribution, ajustez les paramètres et observez la convergence vers la loi normale.</p>
+  </header>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('standard')">Distributions classiques</button>
+    <button class="tab-btn" onclick="switchTab('custom')">✏️ Distribution dessinée</button>
+  </div>
+
+  <!-- ══════════ PANEL : STANDARD ══════════ -->
+  <div id="panel-standard" class="panel active">
+
+    <div class="controls">
+      <div class="control-group">
+        <label>Distribution source</label>
+        <select id="dist" onchange="runSimulation()">
+          <option value="uniform">Uniforme [0, 1]</option>
+          <option value="exponential">Exponentielle (λ=1)</option>
+          <option value="bernoulli">Bernoulli (p=0.3)</option>
+          <option value="normal">Normale (μ=0, σ=1)</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>Taille d'échantillon : n = <span class="val" id="nVal">30</span></label>
+        <input type="range" id="sampleSize" min="1" max="100" value="30" step="1"
+               oninput="document.getElementById('nVal').textContent=this.value; runSimulation()">
+      </div>
+      <div class="control-group">
+        <label>Nombre de simulations (répétitions): <span class="val" id="mVal">1000</span></label>
+        <input type="range" id="numMeans" min="50" max="5000" value="1000" step="50"
+               oninput="document.getElementById('mVal').textContent=this.value; runSimulation()">
+      </div>
+      <div class="control-group" style="justify-content:flex-end;">
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="runSimulation()">↺ Simuler</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card"><div class="slabel">Moyenne (x̄)</div><div class="svalue" id="statMean">—</div></div>
+      <div class="stat-card"><div class="slabel">Écart-type (σ/√n)</div><div class="svalue" id="statSd">—</div></div>
+      <div class="stat-card"><div class="slabel">Taille n actuelle</div><div class="svalue" id="statN">—</div></div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card"><div class="slabel">Skewness</div><div class="svalue" id="statSkew">—</div></div>
+      <div class="stat-card"><div class="slabel">Kurtosis</div><div class="svalue" id="statKurt">—</div></div>
+      <div class="stat-card"><div class="slabel">Normalité</div><div class="svalue" id="statNorm">—</div></div>
+    </div>
+
+    <!-- Gauge -->
+    <div class="gauge-wrap">
+      <div class="gauge-label">Score de normalité <span id="gaugeLabel">—</span></div>
+      <div class="gauge-track"><div class="gauge-fill" id="gaugeFill"></div></div>
+      <div class="gauge-hints"><span>Pas normal</span><span>Normal</span></div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="chart-panel">
+        <div class="chart-label">Distribution source</div>
+        <div class="chart-wrap"><canvas id="sourceChart"></canvas></div>
+      </div>
+      <div class="chart-panel">
+        <div class="chart-label">Distribution des moyennes d'échantillon</div>
+        <div class="chart-wrap"><canvas id="meansChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="legend-item"><div class="leg-sq" style="background:#378ADD;"></div>Fréquences observées</div>
+      <div class="legend-item"><div class="leg-ln" style="background:#D85A30;"></div>Courbe normale théorique</div>
+    </div>
+
+  </div><!-- /panel-standard -->
+
+  <!-- ══════════ PANEL : CUSTOM ══════════ -->
+  <div id="panel-custom" class="panel">
+
+    <div class="draw-instructions">
+      <strong>Dessinez votre propre distribution</strong> en glissant la souris sur le canevas ci-dessous.
+      L'application échantillonnera depuis la forme que vous dessinez et montrera la convergence vers la normale.
+    </div>
+
+    <div class="draw-row">
+      <canvas id="drawCanvas" height="160"></canvas>
+      <div class="draw-actions">
+        <button class="btn btn-primary btn-sm" onclick="clearDrawing()">🗑 Effacer</button>
+        <button class="btn btn-play btn-sm" id="customRunBtn" onclick="runCustomSimulation()">▶ Simuler</button>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="control-group">
+        <label>Taille d'échantillon : n = <span class="val" id="cnVal">30</span></label>
+        <input type="range" id="cSampleSize" min="1" max="100" value="30" step="1"
+               oninput="document.getElementById('cnVal').textContent=this.value">
+      </div>
+      <div class="control-group">
+        <label>Nombre de simulations (répétitions): <span class="val" id="cmVal">1000</span></label>
+        <input type="range" id="cNumMeans" min="50" max="5000" value="1000" step="50"
+               oninput="document.getElementById('cmVal').textContent=this.value">
+      </div>
+      <div class="control-group" style="justify-content:flex-end;">
+        <div class="btn-row">
+          <button class="btn btn-primary btn-sm" onclick="runCustomSimulation()">↺ Simuler</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card"><div class="slabel">Moyenne (x̄)</div><div class="svalue" id="cStatMean">—</div></div>
+      <div class="stat-card"><div class="slabel">Écart-type (σ/√n)</div><div class="svalue" id="cStatSd">—</div></div>
+      <div class="stat-card"><div class="slabel">Taille n actuelle</div><div class="svalue" id="cStatN">—</div></div>
+    </div>
+
+    <!-- Gauge custom -->
+    <div class="gauge-wrap" id="cGaugeWrap">
+      <div class="gauge-label">Score de normalité <span id="cGaugeLabel">—</span></div>
+      <div class="gauge-track"><div class="gauge-fill" id="cGaugeFill"></div></div>
+      <div class="gauge-hints"><span>Pas normal</span><span>Normal</span></div>
+    </div>
+    <div id="cCurveHint" style="display:none; font-size:12px; color:#D85A30; margin-bottom:1rem; padding: 8px 12px; background: #D85A3015; border-radius:8px; border: 0.5px solid #D85A3040;">
+      ⚠️ Augmentez n à 10 ou plus pour voir la courbe normale et le score de normalité.
+    </div>
+
+    <div class="charts-grid">
+      <div class="chart-panel">
+        <div class="chart-label">Votre distribution dessinée</div>
+        <div class="chart-wrap"><canvas id="cSourceChart"></canvas></div>
+      </div>
+      <div class="chart-panel">
+        <div class="chart-label">Distribution des moyennes d'échantillon</div>
+        <div class="chart-wrap"><canvas id="cMeansChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="legend-item"><div class="leg-sq" style="background:#378ADD;"></div>Fréquences observées</div>
+      <div class="legend-item"><div class="leg-ln" style="background:#D85A30;"></div>Courbe normale théorique</div>
+    </div>
+
+  </div><!-- /panel-custom -->
+
+  <footer>Simulation en JavaScript pur · Chart.js 4.4 · Aucune donnée envoyée à un serveur.</footer>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+//  UTILITIES
+// ═══════════════════════════════════════════════
+function isDark() { return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches; }
+function cc() {
+  return {
+    grid: isDark() ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)',
+    ticks: '#888780', blue: '#378ADD',
+    blueA: isDark() ? '#378ADD99' : '#378ADD88',
+    coral: '#D85A30'
+  };
+}
+function destroyChart(c) { if (c) try { c.destroy(); } catch(e) {} }
+
+function calcStats(arr) {
+  const n = arr.length;
+  const m = arr.reduce((a,b) => a+b, 0) / n;
+  const s = Math.sqrt(arr.reduce((a,b) => a+(b-m)**2, 0) / (n-1));
+  return { mean: m, sd: s };
+}
+
+function makeHistogram(data, bins) {
+  let min = Infinity, max = -Infinity;
+  for (const v of data) { if (v < min) min = v; if (v > max) max = v; }
+  const range = max - min || 1;
+  const w = range / bins;
+  const counts = new Array(bins).fill(0);
+  const centers = [];
+  for (let i = 0; i < bins; i++) centers.push(+(min + (i+0.5)*w).toFixed(5));
+  for (const v of data) {
+    let b = Math.floor((v - min) / w);
+    if (b >= bins) b = bins - 1;
+    counts[b]++;
+  }
+  const total = data.length;
+  return { centers, densities: counts.map(c => c/(total*w)), width: w };
+}
+
+function normalPdf(x, mu, sigma) {
+  return Math.exp(-0.5*((x-mu)/sigma)**2) / (sigma * Math.sqrt(2*Math.PI));
+}
+
+function buildChart(canvasId, srcHist, mHist, normalLine, destroyRef) {
+  const c = cc();
+  destroyChart(destroyRef);
+  return new Chart(document.getElementById(canvasId), {
+    type: 'bar',
+    data: {
+      labels: mHist.centers.map(v => v.toFixed(3)),
+      datasets: [
+        {
+          data: mHist.densities,
+          backgroundColor: c.blueA, borderColor: c.blue, borderWidth: 0,
+          barPercentage: 1.0, categoryPercentage: 1.0, order: 2
+        },
+        {
+          data: normalLine, type: 'line',
+          borderColor: c.coral, borderWidth: 2, pointRadius: 0, tension: 0.4, fill: false, order: 1
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 6, font: { size: 11 }, color: c.ticks }, grid: { display: false } },
+        y: { ticks: { font: { size: 11 }, color: c.ticks }, grid: { color: c.grid },
+             title: { display: true, text: 'Densité', font: { size: 11 }, color: c.ticks } }
+      }
+    }
+  });
+}
+
+function buildSourceChart(canvasId, data, destroyRef) {
+  const c = cc();
+  destroyChart(destroyRef);
+  // use fewer bins to avoid empty gaps, scaled to sample count
+  const bins = Math.min(20, Math.ceil(Math.sqrt(data.length)));
+  const hist = makeHistogram(data, bins);
+  return new Chart(document.getElementById(canvasId), {
+    type: 'bar',
+    data: {
+      labels: hist.centers.map(v => v.toFixed(2)),
+      datasets: [{ data: hist.densities, backgroundColor: c.blueA, borderColor: c.blue, borderWidth: 0, barPercentage: 1.0, categoryPercentage: 1.0 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 6, font: { size: 11 }, color: c.ticks }, grid: { display: false } },
+        y: { ticks: { font: { size: 11 }, color: c.ticks }, grid: { color: c.grid },
+             title: { display: true, text: 'Densité', font: { size: 11 }, color: c.ticks } }
+      }
+    }
+  });
+}
+
+
+function calcSkewness(arr, mean, sd) {
+  const n = arr.length;
+  return arr.reduce((a,b)=>a+((b-mean)/sd)**3,0)/n;
+}
+
+function calcKurtosis(arr, mean, sd) {
+  const n = arr.length;
+  return arr.reduce((a,b)=>a+((b-mean)/sd)**4,0)/n;
+}
+
+function normalityScore(skew, kurt) {
+  const skewPenalty = Math.abs(skew) * 25;
+  const kurtPenalty = Math.abs(kurt - 3) * 20;
+  return Math.max(0, Math.min(100, 100 - skewPenalty - kurtPenalty));
+}
+
+function updateGauge(fillId, labelId, score) {
+  const fill  = document.getElementById(fillId);
+  const label = document.getElementById(labelId);
+  fill.style.width = score + '%';
+  // red → orange → yellow → green (green only above 80%)
+  const r = score < 65 ? 220 : Math.round(220 - (score - 65) * 6.3);
+  const g = score < 65 ? Math.round(score * 2.4) : 155;
+  const b = 40;
+  fill.style.background = `rgb(${r},${g},${b})`;
+  label.textContent = score.toFixed(0) + '%';
+}
+
+// ═══════════════════════════════════════════════
+//  TAB SWITCHING
+// ═══════════════════════════════════════════════
+function switchTab(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ═══════════════════════════════════════════════
+//  STANDARD PANEL
+// ═══════════════════════════════════════════════
+let srcChart = null, mnsChart = null;
+let animInterval = null;
+let animN = 1;
+
+function sample(dist) {
+  switch (dist) {
+    case 'uniform': return Math.random();
+    case 'exponential': return -Math.log(1 - Math.random());
+    case 'bernoulli': return Math.random() < 0.3 ? 1 : 0;
+    case 'normal': {
+      let u=0, v=0;
+      while(!u) u=Math.random(); while(!v) v=Math.random();
+      return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+    }
+  }
+}
+
+function sampleMean(dist, n) {
+  let s=0; for (let i=0; i<n; i++) s+=sample(dist); return s/n;
+}
+
+function runSimulationWithN(n) {
+  const dist = document.getElementById('dist').value;
+  const M = parseInt(document.getElementById('numMeans').value);
+  const BINS = 30;
+
+  const srcData = Array.from({ length: Math.min(M, 2000) }, () => sample(dist));
+  const means   = Array.from({ length: M }, () => sampleMean(dist, n));
+
+  const st = calcStats(means);
+  document.getElementById('statMean').textContent = st.mean.toFixed(4);
+  document.getElementById('statSd').textContent   = st.sd.toFixed(4);
+  document.getElementById('statN').textContent = n;
+
+  const skew = calcSkewness(means, st.mean, st.sd);
+  const kurt = calcKurtosis(means, st.mean, st.sd);
+  const statScore = normalityScore(skew, kurt);
+  const nPenalty = dist === 'normal' ? 1 : Math.min(1, n / 30);
+  const score = statScore * nPenalty;
+
+  document.getElementById('statSkew').textContent = skew.toFixed(3);
+  document.getElementById('statKurt').textContent = kurt.toFixed(3);
+  document.getElementById('statNorm').textContent = score.toFixed(0) + '%';
+  updateGauge('gaugeFill', 'gaugeLabel', score);
+
+  const mHist = makeHistogram(means, BINS);
+  const normalLine = mHist.centers.map(x => normalPdf(x, st.mean, st.sd));
+
+  srcChart = buildSourceChart('sourceChart', srcData, srcChart);
+  mnsChart = buildChart('meansChart', null, mHist, normalLine, mnsChart);
+}
+
+function runSimulation() {
+  const n = parseInt(document.getElementById('sampleSize').value);
+  runSimulationWithN(n);
+}
+
+// ── ANIMATION (Play n from 1→100) ──
+function toggleAnimation() {
+  if (animInterval) { stopAnimation(); return; }
+  const btn = document.getElementById('playBtn');
+  btn.textContent = '⏹ Arrêter'; btn.classList.add('playing');
+  animN = 1;
+  animInterval = setInterval(() => {
+    if (animN > 100) { stopAnimation(); return; }
+    document.getElementById('sampleSize').value = animN;
+    document.getElementById('nVal').textContent  = animN;
+    document.getElementById('animBar').style.width = (animN) + '%';
+    runSimulationWithN(animN);
+    animN++;
+  }, 600);
+}
+
+function stopAnimation() {
+  clearInterval(animInterval); animInterval = null;
+  const btn = document.getElementById('playBtn');
+  btn.textContent = '▶ Animer'; btn.classList.remove('playing');
+  document.getElementById('animBar').style.width = '0%';
+}
+
+// ═══════════════════════════════════════════════
+//  CUSTOM DRAW PANEL
+// ═══════════════════════════════════════════════
+const drawCanvas = document.getElementById('drawCanvas');
+const drawCtx    = drawCanvas.getContext('2d');
+let drawing = false;
+let drawnDensity = null; // array of 100 buckets
+
+function resizeDrawCanvas() {
+  const w = drawCanvas.parentElement.clientWidth - 80;
+  drawCanvas.width  = Math.max(200, w);
+  drawCanvas.height = 160;
+  clearDrawing();
+}
+
+// density array — 100 columns, each is height (0–1)
+let densityArr = new Array(100).fill(0);
+let hasDrawing = false;
+
+function getCol(e) {
+  const rect = drawCanvas.getBoundingClientRect();
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const scaleX = drawCanvas.width / rect.width;
+  return Math.floor(((clientX - rect.left) * scaleX / drawCanvas.width) * 100);
+}
+
+function getRow(e) {
+  const rect = drawCanvas.getBoundingClientRect();
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  const scaleY = drawCanvas.height / rect.height;
+  return 1 - ((clientY - rect.top) * scaleY / drawCanvas.height);
+}
+
+let lastCol = null;
+
+function paintDraw(e) {
+  const col = getCol(e);
+  const row = getRow(e);
+  if (col < 0 || col >= 100) { lastCol = null; return; }
+
+  // interpolate between last position and current to fill gaps when mouse moves fast
+  if (lastCol !== null && Math.abs(col - lastCol) > 1) {
+    const steps = Math.abs(col - lastCol);
+    for (let s = 0; s <= steps; s++) {
+      const ic = Math.round(lastCol + (col - lastCol) * s / steps);
+      if (ic >= 0 && ic < 100) densityArr[ic] = Math.max(0, Math.min(1, row));
+    }
+  } else {
+    densityArr[col] = Math.max(0, Math.min(1, row));
+  }
+  lastCol = col;
+
+  // light gaussian smoothing (radius 2) so the curve looks organic
+  const smoothed = [...densityArr];
+  const kernel = [0.07, 0.2, 0.46, 0.2, 0.07];
+  for (let i = 0; i < 100; i++) {
+    let val = 0, wsum = 0;
+    for (let k = -2; k <= 2; k++) {
+      const j = i + k;
+      if (j >= 0 && j < 100) { val += densityArr[j] * kernel[k+2]; wsum += kernel[k+2]; }
+    }
+    smoothed[i] = val / wsum;
+  }
+  densityArr = smoothed;
+
+  hasDrawing = true;
+  drawCanvas.classList.add('has-drawing');
+  redrawCanvas();
+}
+
+function redrawCanvas() {
+  const W = drawCanvas.width, H = drawCanvas.height;
+  drawCtx.clearRect(0, 0, W, H);
+
+  // grid lines
+  drawCtx.strokeStyle = isDark() ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  drawCtx.lineWidth = 1;
+  for (let i=0; i<=4; i++) {
+    const y = (H * i) / 4;
+    drawCtx.beginPath(); drawCtx.moveTo(0, y); drawCtx.lineTo(W, y); drawCtx.stroke();
+  }
+
+  if (!hasDrawing) {
+    drawCtx.fillStyle = isDark() ? '#444' : '#bbb';
+    drawCtx.font = '10px system-ui';
+    drawCtx.textAlign = 'center';
+    drawCtx.fillText('Glissez ici pour dessiner votre distribution', W/2, H/2 - 4);
+    drawCtx.fillText('(n\'importe quelle forme fonctionne !)', W/2, H/2 + 10);
+    // axis hints
+    drawCtx.font = '9px system-ui';
+    drawCtx.textAlign = 'left';
+    drawCtx.fillText('← valeurs faibles', 6, H - 5);
+    drawCtx.textAlign = 'right';
+    drawCtx.fillText('valeurs élevées →', W - 6, H - 5);
+    return;
+  }
+
+  // draw as smooth filled area using bezier curves
+  const bw = W / 100;
+  // filled area
+  drawCtx.beginPath();
+  drawCtx.moveTo(0, H);
+  for (let i = 0; i < 100; i++) {
+    const x = (i + 0.5) * bw;
+    const y = H - densityArr[i] * H;
+    if (i === 0) drawCtx.lineTo(x, y);
+    else {
+      const px = (i - 0.5) * bw;
+      const mx = (px + x) / 2;
+      drawCtx.bezierCurveTo(mx, H - densityArr[i-1]*H, mx, y, x, y);
+    }
+  }
+  drawCtx.lineTo(W, H);
+  drawCtx.closePath();
+  drawCtx.fillStyle = isDark() ? '#378ADD55' : '#378ADD44';
+  drawCtx.fill();
+
+  // smooth top line
+  drawCtx.beginPath();
+  for (let i = 0; i < 100; i++) {
+    const x = (i + 0.5) * bw;
+    const y = H - densityArr[i] * H;
+    if (i === 0) drawCtx.moveTo(x, y);
+    else {
+      const px = (i - 0.5) * bw;
+      const mx = (px + x) / 2;
+      drawCtx.bezierCurveTo(mx, H - densityArr[i-1]*H, mx, y, x, y);
+    }
+  }
+  drawCtx.strokeStyle = '#378ADD';
+  drawCtx.lineWidth = 2;
+  drawCtx.stroke();
+}
+
+drawCanvas.addEventListener('mousedown', e => { drawing=true; lastCol=null; paintDraw(e); });
+drawCanvas.addEventListener('mousemove', e => { if (drawing) paintDraw(e); });
+drawCanvas.addEventListener('mouseup', () => { drawing=false; lastCol=null; });
+drawCanvas.addEventListener('mouseleave', () => { drawing=false; lastCol=null; });
+drawCanvas.addEventListener('touchstart', e => { e.preventDefault(); drawing=true; lastCol=null; paintDraw(e); }, { passive: false });
+drawCanvas.addEventListener('touchmove', e => { e.preventDefault(); if(drawing) paintDraw(e); }, { passive: false });
+drawCanvas.addEventListener('touchend', () => { drawing=false; lastCol=null; });
+
+function clearDrawing() {
+  densityArr = new Array(100).fill(0);
+  hasDrawing = false; lastCol = null;
+  drawCanvas.classList.remove('has-drawing');
+  redrawCanvas();
+}
+
+// Sample from drawn distribution using inverse CDF via cumulative density
+function sampleFromDrawn() {
+  const total = densityArr.reduce((a,b) => a+b, 0);
+  if (total === 0) return Math.random();
+  const r = Math.random() * total;
+  let cum = 0;
+  for (let i=0; i<100; i++) {
+    cum += densityArr[i];
+    if (cum >= r) return (i + Math.random()) / 100;
+  }
+  return 1;
+}
+
+function sampleMeanCustom(n) {
+  let s=0; for (let i=0; i<n; i++) s+=sampleFromDrawn(); return s/n;
+}
+
+let cSrcChart=null, cMnsChart=null;
+let cAnimInterval=null, cAnimN=1;
+
+function runCustomSimulationWithN(n) {
+  if (!hasDrawing) { alert('Dessinez d\'abord une distribution !'); return; }
+  const M = parseInt(document.getElementById('cNumMeans').value);
+  const BINS = 30;
+
+  const srcData = Array.from({ length: Math.min(M, 1000) }, () => sampleFromDrawn());
+  const means   = Array.from({ length: M }, () => sampleMeanCustom(n));
+
+  const st = calcStats(means);
+  document.getElementById('cStatMean').textContent = st.mean.toFixed(4);
+  document.getElementById('cStatSd').textContent   = st.sd.toFixed(4);
+  document.getElementById('cStatN').textContent    = n;
+
+  const mHist = makeHistogram(means, BINS);
+
+  // Only show normal curve and gauge when n >= 10
+  const showCurve = n >= 10;
+  const normalLine = showCurve ? mHist.centers.map(x => normalPdf(x, st.mean, st.sd)) : mHist.centers.map(() => null);
+
+  if (showCurve) {
+    const skew  = calcSkewness(means, st.mean, st.sd);
+    const kurt  = calcKurtosis(means, st.mean, st.sd);
+    const statScore = normalityScore(skew, kurt);
+    // penalize for small n: score can't exceed n/30 * 100 until n=30
+    const nPenalty = Math.min(1, n / 30);
+    const score = statScore * nPenalty;
+    updateGauge('cGaugeFill', 'cGaugeLabel', score);
+    document.getElementById('cGaugeWrap').style.opacity = '1';
+  } else {
+    document.getElementById('cGaugeFill').style.width = '0%';
+    document.getElementById('cGaugeLabel').textContent = '—';
+    document.getElementById('cGaugeWrap').style.opacity = '0.35';
+  }
+
+  // show hint message when n < 10
+  const hint = document.getElementById('cCurveHint');
+  hint.style.display = showCurve ? 'none' : 'block';
+
+  cSrcChart = buildSourceChart('cSourceChart', srcData, cSrcChart);
+  cMnsChart = buildChart('cMeansChart', null, mHist, normalLine, cMnsChart);
+}
+
+function runCustomSimulation() {
+  const n = parseInt(document.getElementById('cSampleSize').value);
+  runCustomSimulationWithN(n);
+}
+
+function toggleCustomAnimation() {
+  if (cAnimInterval) { stopCustomAnimation(); return; }
+  if (!hasDrawing) { alert('Dessinez d\'abord une distribution !'); return; }
+  const btn = document.getElementById('cPlayBtn');
+  btn.textContent = '⏹ Arrêter'; btn.classList.add('playing');
+  cAnimN = 1;
+  cAnimInterval = setInterval(() => {
+    if (cAnimN > 100) { stopCustomAnimation(); return; }
+    document.getElementById('cSampleSize').value = cAnimN;
+    document.getElementById('cnVal').textContent  = cAnimN;
+    document.getElementById('cAnimBar').style.width = cAnimN + '%';
+    runCustomSimulationWithN(cAnimN);
+    cAnimN++;
+  }, 600);
+}
+
+function stopCustomAnimation() {
+  clearInterval(cAnimInterval); cAnimInterval = null;
+  const btn = document.getElementById('cPlayBtn');
+  btn.textContent = '▶ Animer n'; btn.classList.remove('playing');
+  document.getElementById('cAnimBar').style.width = '0%';
+}
+
+// ── init ──
+window.addEventListener('resize', () => { resizeDrawCanvas(); });
+resizeDrawCanvas();
+runSimulation();
+</script>
+</body>
+</html>
